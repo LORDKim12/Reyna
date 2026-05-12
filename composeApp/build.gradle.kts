@@ -39,6 +39,8 @@ kotlin {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
+            // Dentro de commonMain.dependencies
+            implementation("io.ktor:ktor-network:3.0.0")
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
