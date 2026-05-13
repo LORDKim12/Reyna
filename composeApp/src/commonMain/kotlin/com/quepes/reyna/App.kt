@@ -1,4 +1,4 @@
-package com.quepes.reyna // Asegúrate de que este sea tu paquete correcto
+package com.projecto.reyna // Revisa que este sea tu paquete exacto
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -36,10 +36,9 @@ fun ReynaVoiceInterface() {
     var recognizedText by remember { mutableStateOf("Esperando objetivo...") }
     var errorMessage by remember { mutableStateOf("") }
 
-    // EL TEMPORIZADOR TÁCTICO
     var sendJob by remember { mutableStateOf<Job?>(null) }
 
-    val serverIp = "192.168.1.71" // Tu IP
+    val serverIp = "192.168.1.71" // Tu IP en Windows
     val serverPort = 8080
 
     Column(modifier = Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
@@ -53,40 +52,58 @@ fun ReynaVoiceInterface() {
                 if (isListening) {
                     voiceRecognizer.stopListening()
                     isListening = false
-                    sendJob?.cancel() // Abortamos el disparo si apagas el radar manualmente
+                    sendJob?.cancel() // Si apagas manual, cancelamos el envío
+                    recognizedText = "Cacería abortada manualmente."
                 } else {
-                    errorMessage = ""; recognizedText = "Escuchando..."; isListening = true
+                    errorMessage = ""
+                    recognizedText = "Escuchando..."
+                    isListening = true
 
                     voiceRecognizer.startListening(
                         onResult = { textoCapturado ->
                             recognizedText = textoCapturado
 
-                            // 1. Cancelamos el disparo anterior porque sigues hablando
+                            // 1. Cancelamos el temporizador anterior si sigues hablando
                             sendJob?.cancel()
 
-                            // 2. Preparamos un nuevo disparo que espera silencio
+                            // 2. Iniciamos el temporizador de silencio
                             sendJob = scope.launch(Dispatchers.IO) {
-                                delay(1500) // ESPERA 1.5 SEGUNDOS DE SILENCIO
+                                delay(1500) // ESPERA 1.5 SEGUNDOS DE SILENCIO TOTAL
 
+                                // 3. ¡SILENCIO DETECTADO! APAGAMOS EL MICRÓFONO PRIMERO
+                                withContext(Dispatchers.Main) {
+                                    voiceRecognizer.stopListening()
+                                    isListening = false
+                                    recognizedText = "$textoCapturado\n[ENVIANDO...]"
+                                }
+
+                                // 4. AHORA SÍ, ATRAVESAMOS LA RED
                                 try {
                                     val selectorManager = SelectorManager(Dispatchers.IO)
                                     val socket = aSocket(selectorManager).tcp().connect(serverIp, serverPort)
                                     val writeChannel = socket.openWriteChannel(autoFlush = true)
-                                    writeChannel.writeStringUtf8(textoCapturado)
-                                    socket.close(); selectorManager.close()
 
-                                    // 3. Apagamos el micrófono automáticamente tras enviar la orden
+                                    writeChannel.writeStringUtf8(textoCapturado)
+
+                                    socket.close()
+                                    selectorManager.close()
+
+                                    // Confirmación visual
                                     withContext(Dispatchers.Main) {
-                                        voiceRecognizer.stopListening()
-                                        isListening = false
-                                        recognizedText = "$textoCapturado\n[ORDEN ENVIADA]"
+                                        recognizedText = "$textoCapturado\n[IMPACTO CONFIRMADO]"
                                     }
                                 } catch (e: Exception) {
-                                    withContext(Dispatchers.Main) { errorMessage = "Error de enlace: ${e.message}" }
+                                    // Si la red falla, el micrófono ya está apagado, por lo que no se congela
+                                    withContext(Dispatchers.Main) {
+                                        errorMessage = "Fallo de conexión TCP: ${e.message}"
+                                    }
                                 }
                             }
                         },
-                        onError = { error -> errorMessage = error; isListening = false }
+                        onError = { error ->
+                            errorMessage = error
+                            isListening = false
+                        }
                     )
                 }
             },
